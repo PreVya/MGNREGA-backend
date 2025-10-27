@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+psycopg2-binary
+SQLAlchemy
+python-dotenv
+pandas
+redis
+aiofiles
+requests
+asyncpg
+apscheduler
+httpx
