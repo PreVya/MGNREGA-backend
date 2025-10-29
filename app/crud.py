@@ -1,155 +1,150 @@
 from datetime import datetime
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 from app import models
 import logging
 
 logger = logging.getLogger(__name__)
 
-def insert_states(db: Session, records: list):
-    """Insert or update states from API records."""
-    added, skipped = 0, 0
-    seen =set()
-
+def upsert_states(db, records):
     for record in records:
-        state_name = record.get("State_Name") or record.get("state_name")
-        state_code = record.get("State_Code") or record.get("state_code")
-        if not (state_name and state_code):
-            continue
-        seen.add((state_code, state_name))
+        state_code = record.get("state_code")
+        state_name = record.get("state_name")
 
-    for state_code, state_name in seen:
-        existing = db.query(models.States).filter_by(state_code=state_code).first()
-        if not existing:
-            db.add(models.States(state_code=state_code, state_name=state_name))
-            added += 1
-        else:
-            skipped += 1
+        stmt = insert(models.States).values(
+            state_code=state_code,
+            state_name=state_name
+        )
+
+        # Perform UPSERT on unique state_code
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['state_code'],
+            set_={
+                "state_name": stmt.excluded.state_name,
+                "updated_at": func.now()
+            }
+        )
+
+        db.execute(stmt)
 
     db.commit()
-    logger.info(f"✅ States processed: {added} added, {skipped} skipped.")
-    return {"added": added, "skipped": skipped}
+    return {"message": f"{len(records)} states upserted successfully"}
+
+def upsert_districts(db, records, batch_size=200):
+    total = len(records)
+    for i in range(0, total, batch_size):
+        batch = records[i:i+batch_size]
+        for record in batch:
+            stmt = insert(models.Districts).values(
+                district_name=record.get("District"),
+                district_code=record.get("District_Code"),
+                state_id=record.get("State_ID"),
+            ).on_conflict_do_update(
+                index_elements=["district_code"],
+                set_={
+                    "district_name": stmt.excluded.district_name,
+                    "state_id": stmt.excluded.state_id,
+                    "updated_at": func.now(),
+                },
+            )
+            db.execute(stmt)
+
+        db.commit()  # commit per batch to free up memory
+    return {"message": f"{total} districts upserted successfully"}
 
 
-def insert_districts(db: Session, records: list):
-    """Insert unique districts linked to their states."""
-    added, skipped = 0, 0
-    seen = set()
 
-    # Build a unique set of (district_code, district_name, state_code)
+
+def upsert_mgnrega_data(db, records):
     for record in records:
-        state_code = record.get("State_Code") or record.get("state_code")
-        district_code = record.get("District_Code") or record.get("district_code")
-        district_name = record.get("District_Name") or record.get("district_name")
-
-        if not (state_code and district_code and district_name):
-            continue
-        seen.add((district_code, district_name, state_code))
-
-    for district_code, district_name, state_code in seen:
-        state = db.query(models.States).filter_by(state_code=state_code).first()
-        if not state:
-            logger.warning(f"⚠️ Missing state {state_code} — skipping district {district_name}")
+        district_code = record.get("district_code")
+        if not district_code:
             continue
 
-        existing = db.query(models.Districts).filter_by(district_code=district_code).first()
-        if not existing:
-            db.add(models.Districts(
-                district_code=district_code,
-                district_name=district_name,
-                state_id=state.id
-            ))
-            added += 1
-        else:
-            skipped += 1
+        # Fetch district_id
+        district = db.query(models.Districts).filter_by(district_code=district_code).first()
+        if not district:
+            continue
+
+        stmt = insert(models.MGNREGAData).values(
+            district_id=district.id,
+            approved_labour_budget=record.get("Approved_Labour_Budget"),
+            average_wage_rate_per_day_per_person=record.get("Average_Wage_rate_per_day_per_person"),
+            average_days_of_employment_per_household=record.get("Average_days_of_employment_provided_per_Household"),
+            differently_abled_persons_worked=record.get("Differently_abled_persons_worked"),
+            material_and_skilled_wages=record.get("Material_and_skilled_Wages"),
+            number_of_completed_works=record.get("Number_of_Completed_Works"),
+            number_of_gps_with_nil_exp=record.get("Number_of_GPs_with_NIL_exp"),
+            number_of_ongoing_works=record.get("Number_of_Ongoing_Works"),
+            persondays_of_central_liability_so_far=record.get("Persondays_of_Central_Liability_so_far"),
+            sc_persondays=record.get("SC_persondays"),
+            sc_workers_against_active_workers=record.get("SC_workers_against_active_workers"),
+            st_persondays=record.get("ST_persondays"),
+            st_workers_against_active_workers= record.get("ST_workers_against_active_workers"),
+            total_adm_expenditure=record.get("Total_Adm_Expenditure"),
+            total_exp=record.get("Total_Exp"),
+            total_households_worked=record.get("Total_Households_Worked"),
+            total_individuals_worked=record.get("Total_Individuals_Worked"),
+            total_no_of_active_job_cards=record.get("Total_No_of_Active_Job_Cards"),
+            total_no_of_active_workers=record.get("Total_No_of_Active_Workers"),
+            total_no_of_hh_completed_100_days_of_wage_employemt=record.get("Total_No_of_HHs_completed_100_Days_of_Wage_Employment"),
+            total_no_of_jobcards_issued=record.get("Total_No_of_JobCards_issued"),
+            total_no_of_workers=record.get("Total_No_of_Workers"),
+            total_no_of_works_takenup=record.get("Total_No_of_Works_Takenup"),
+            wages=record.get("Wages"),
+            women_persondays=record.get("Women_Persondays"),
+            percent_of_category_b_works=record.get("percent_of_Category_B_Works"),
+            percentage_of_expenditure_on_agriculture_allied_works=record.get("percent_of_Expenditure_on_Agriculture_Allied_Works"),
+            percent_of_NRM_expenditure=record.get("percent_of_NRM_Expenditure"),
+            percentage_payments_generated_within_15_days=record.get("percentage_payments_gererated_within_15_days"),
+        )
+
+        # Perform UPSERT based on district_id (unique per district)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['district_id'],
+            set_={
+                "approved_labour_budget": stmt.excluded.approved_labour_budget,
+                "average_wage_rate_per_day_per_person": stmt.excluded.average_wage_rate_per_day_per_person,
+                "average_days_of_employment_per_household": stmt.excluded.average_days_of_employment_per_household,
+                "differently_abled_persons_worked": stmt.excluded.differently_abled_persons_worked,
+                "material_and_skilled_wages": stmt.excluded.material_and_skilled_wages,
+                "number_of_completed_works": stmt.excluded.number_of_completed_works,
+                "number_of_gps_with_nil_exp": stmt.excluded.number_of_gps_with_nil_exp,
+                "number_of_ongoing_works": stmt.excluded.number_of_ongoing_works,
+                "persondays_of_central_liability_so_far": stmt.excluded.persondays_of_central_liability_so_far,
+                "sc_persondays": stmt.excluded.sc_persondays,
+                "sc_workers_against_active_workers": stmt.excluded.sc_workers_against_active_workers,
+                "st_persondays": stmt.excluded.st_persondays,
+                "st_workers_against_active_workers": stmt.excluded.st_workers_against_active_workers,
+                "total_adm_expenditure": stmt.excluded.total_adm_expenditure,
+                "total_exp": stmt.excluded.total_exp,
+                "total_households_worked": stmt.excluded.total_households_worked,
+                "total_individuals_worked": stmt.excluded.total_individuals_worked,
+                "total_no_of_active_job_cards": stmt.excluded.total_no_of_active_job_cards,
+                "total_no_of_active_workers": stmt.excluded.total_no_of_active_workers,
+                "total_no_of_hh_completed_100_days_of_wage_employemt": stmt.excluded.total_no_of_hh_completed_100_days_of_wage_employemt,
+                "total_no_of_jobcards_issued": stmt.excluded.total_no_of_jobcards_issued,
+                "total_no_of_workers": stmt.excluded.total_no_of_workers,
+                "total_no_of_works_takenup": stmt.excluded.total_no_of_works_takenup,
+                "wages": stmt.excluded.wages,
+                "women_persondays": stmt.excluded.women_persondays,
+                "percent_of_category_b_works": stmt.excluded.percent_of_category_b_works,
+                "percentage_of_expenditure_on_agriculture_allied_works": stmt.excluded.percentage_of_expenditure_on_agriculture_allied_works,
+                "percent_of_NRM_expenditure": stmt.excluded.percent_of_NRM_expenditure,
+                "percentage_payments_generated_within_15_days": stmt.excluded.percentage_payments_generated_within_15_days,
+                "updated_at": func.now()
+            }
+        )
+
+        db.execute(stmt)
 
     db.commit()
-    logger.info(f"✅ Districts processed: {added} added, {skipped} skipped.")
-    return {"added": added, "skipped": skipped}
-
-
-
-def insert_mgnrega_data(db: Session, records: list):
-    """Insert unique MGNREGA data linked to districts."""
-    processed, errors = 0, 0
-    seen = set()
-    new_entries = []
-
-    for record in records:
-        try:
-            district_code = record.get("District_Code") or record.get("district_code")
-            if not district_code:
-                continue
-
-            # Create a simple unique key to avoid inserting duplicates
-            unique_key = (
-                district_code,
-                record.get("Total_Num_of_Job_Cards_Issued"),
-                record.get("Total_Exp"),
-            )
-            if unique_key in seen:
-                continue
-            seen.add(unique_key)
-
-            district = db.query(models.Districts).filter_by(district_code=district_code).first()
-            if not district:
-                logger.warning(f"⚠️ Missing district {district_code}")
-                continue
-
-            entry = models.MGNREGAData(
-                approved_labour_budget=int(record.get("Approved_Labour_Budget") or 0),
-                average_wage_rate_per_day_per_person=float(record.get("Average_Wage_rate_per_day_per_person") or 0),
-                differently_abled_persons_worked=int(record.get("Differently_abled_persons_worked") or 0),
-                material_and_skilled_wages=float(record.get("Material_and_Skilled_Wages") or 0),
-                number_of_complted_projects=int(record.get("Number_of_Completed_Projects") or 0),
-                number_of_gp_with_nil_exp=int(record.get("Number_of_GP_with_Nil_Exp") or 0),
-                number_of_ongoing_works=int(record.get("Number_of_Ongoing_Works") or 0),
-                persondays_of_central_liability_so_far=int(record.get("Persondays_of_Central_Liability_so_far") or 0),
-                sc_persondays=int(record.get("SC_Persondays") or 0),
-                sc_workers_against_Active_workers=int(record.get("SC_workers_against_Active_workers") or 0),
-                st_persondays=int(record.get("ST_Persondays") or 0),
-                st_workers_against_Active_workers=int(record.get("ST_workers_against_Active_workers") or 0),
-                total_adm_expenditure=float(record.get("Total_Adm_Expenditure") or 0),
-                total_exp=float(record.get("Total_Exp") or 0),
-                total_households_worked=int(record.get("Total_Households_Worked") or 0),
-                total_individuals_worked=int(record.get("Total_Individuals_Worked") or 0),
-                total_num_of_active_job_cards=int(record.get("Total_Num_of_Active_Job_Cards") or 0),
-                total_num_of_active_workers=int(record.get("Total_Num_of_Active_Workers") or 0),
-                total_num_of_hh_completed_100_day_wage_employment=int(record.get("Total_Num_of_HH_Completed_100_Day_Wage_Employment") or 0),
-                total_num_of_job_cards_issued=int(record.get("Total_Num_of_Job_Cards_Issued") or 0),
-                total_num_of_workers=int(record.get("Total_Num_of_Workers") or 0),
-                total_num_of_works_takenup=int(record.get("Total_No_of_Works_Takenup") or 0),
-                wages=float(record.get("Wages") or 0),
-                women_persondays=int(record.get("Women_Persondays") or 0),
-                percent_of_category_B_works=float(record.get("Percent_of_Category_B_Works") or 0),
-                percentage_of_expenditure_on_agriculture_allied_works=float(record.get("Percentage_of_Expenditure_on_Agriculture_Allied_Works") or 0),
-                percent_of_NRM_expenditure=float(record.get("Percent_of_NRM_Expenditure") or 0),
-                percentage_payments_generated_within_15_days=float(record.get("Percentage_of_Payments_Generated_within_15_days") or 0),
-                remarks=record.get("Remarks") or "NA",
-                timestamp=datetime.utcnow(),
-                district_id=district.id
-            )
-
-            new_entries.append(entry)
-            processed += 1
-
-        except Exception as e:
-            errors += 1
-            logger.error(f"🔥 Error preparing MGNREGA record for {record.get('District_Name')}: {e}")
-
-    try:
-        db.bulk_save_objects(new_entries)
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        logger.error(f"🔥 Bulk insert failed: {e}")
-
-    logger.info(f"✅ MGNREGA data inserted: {processed} successful, {errors} errors.")
-    return {"processed": processed, "errors": errors}
+    return {"message": f"{len(records)} MGNREGA data rows upserted successfully"}
 
 
 
 def save_raw_api_cache(db: Session, api_url: str, response_json: dict):
-    """Store raw API response for debugging or auditing."""
     try:
         cache_entry = models.APICache(
             api_url=api_url,

@@ -20,6 +20,7 @@ class MGNREGAData(Base):
     district_id = Column(Integer, ForeignKey('districts.id',ondelete="CASCADE"), nullable=False)
     approved_labour_budget = Column(BigInteger, nullable=False)
     average_wage_rate_per_day_per_person = Column(Float, nullable=False)
+    average_days_of_employment_per_household = Column(Integer, nullable=False)
     differently_abled_persons_worked = Column(Integer, nullable=False)
     material_and_skilled_wages = Column(Float, nullable=False)
     number_of_complted_projects = Column(Integer, nullable=False)

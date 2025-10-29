@@ -32,6 +32,7 @@ class District(DistrictBase):
 class MGNREGADataBase(BaseModel):
     approved_labour_budget: int
     average_wage_rate_per_day_per_person: float
+    average_days_of_employment_provided_per_household: int
     differently_abled_persons_worked: int
     material_and_skilled_wages: float
     number_of_complted_projects: int
