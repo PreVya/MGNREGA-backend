@@ -165,7 +165,6 @@ _FIELD_MAP = {
     "percent_of_Expenditure_on_Agriculture_Allied_Works": "percentage_of_expenditure_on_agriculture_allied_works",
     "percent_of_NRM_Expenditure": "percent_of_NRM_expenditure",
     "percentage_payments_gererated_within_15_days": "percentage_payments_generated_within_15_days",
-    # fallback keys often used in other codepaths
     "approved_labour_budget": "approved_labour_budget",
     "average_wage_rate_per_day_per_person": "average_wage_rate_per_day_per_person",
     "average_days_of_employment_provided_per_household": "average_days_of_employment_per_household",
@@ -210,7 +209,6 @@ def upsert_mgnrega_data(db, records, batch_size: int = 500):
     # dedupe incoming records by district_code first
     records = dedupe_records(records, _get_district_code)
 
-    # --- ensure referenced states exist ---
     state_rows = db.query(models.States.state_code, models.States.id).all()
     state_map = {r.state_code: r.id for r in state_rows}
 
@@ -234,7 +232,6 @@ def upsert_mgnrega_data(db, records, batch_size: int = 500):
     state_rows = db.query(models.States.state_code, models.States.id).all()
     state_map = {r.state_code: r.id for r in state_rows}
 
-    # --- ensure referenced districts exist ---
     district_rows = db.query(models.Districts.district_code, models.Districts.id).all()
     district_map = {r.district_code: r.id for r in district_rows}
 
@@ -261,7 +258,6 @@ def upsert_mgnrega_data(db, records, batch_size: int = 500):
     district_rows = db.query(models.Districts.district_code, models.Districts.id).all()
     district_map = {r.district_code: r.id for r in district_rows}
 
-    # --- prepare deduplicated rows keyed by district_id ---
     prepared = {}
     for r in records:
         dc = (r.get("district_code") or r.get("District_Code"))
@@ -285,7 +281,6 @@ def upsert_mgnrega_data(db, records, batch_size: int = 500):
     if not values:
         return {"message": "no valid rows to insert/update"}
 
-    # Split into batches
     batches = [values[i : i + batch_size] for i in range(0, len(values), batch_size)]
 
     # Decide strategy based on whether table already has data

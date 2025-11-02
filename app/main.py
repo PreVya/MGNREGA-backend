@@ -4,7 +4,7 @@ import uvicorn
 from app.database import Base, engine
 from app.scheduler import start_scheduler
 import app.config as config
-# from app.routes import mgnrega
+from app.routes import mgnrega
 
 
 Base.metadata.create_all(bind=engine)
@@ -23,6 +23,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# register routes
+app.include_router(mgnrega.router)
 
 @app.get("/")
 def root():
