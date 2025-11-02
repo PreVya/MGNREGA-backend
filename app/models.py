@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, Column, Integer, String, ForeignKey, TIMESTAMP, BigInteger, Float, func
+from sqlalchemy import JSON, Column, Integer, String, ForeignKey, TIMESTAMP, BigInteger, Float, func, UniqueConstraint
 from app.database import Base
 
 class States(Base):
@@ -6,6 +6,7 @@ class States(Base):
     id = Column(Integer, primary_key=True, index=True)
     state_name = Column(String, unique=True, index=True, nullable=False)
     state_code = Column(String, unique=True, index=True, nullable=False)
+    updated_at = Column(TIMESTAMP(timezone=True), onupdate=func.now())
 
 class Districts(Base):
     __tablename__ = 'districts'
@@ -13,9 +14,12 @@ class Districts(Base):
     district_name = Column(String, unique=True, index=True, nullable=False)
     district_code = Column(String, unique=True, index=True, nullable=False)
     state_id = Column(Integer, ForeignKey('states.id',ondelete="CASCADE"), nullable=False)
+    updated_at = Column(TIMESTAMP(timezone=True), onupdate=func.now())
 
 class MGNREGAData(Base):
     __tablename__ = 'mgnrega_data'
+    __table_args__ = (UniqueConstraint('district_id', name='uq_mgnrega_district_id'),)
+
     id = Column(Integer, primary_key=True, index=True)
     district_id = Column(Integer, ForeignKey('districts.id',ondelete="CASCADE"), nullable=False)
     approved_labour_budget = Column(BigInteger, nullable=False)
@@ -23,7 +27,7 @@ class MGNREGAData(Base):
     average_days_of_employment_per_household = Column(Integer, nullable=False)
     differently_abled_persons_worked = Column(Integer, nullable=False)
     material_and_skilled_wages = Column(Float, nullable=False)
-    number_of_complted_projects = Column(Integer, nullable=False)
+    number_of_completed_works = Column(Integer, nullable=False)
     number_of_gp_with_nil_exp = Column(Integer, nullable=False)
     number_of_ongoing_works = Column(Integer, nullable=False)
     persondays_of_central_liability_so_far = Column(BigInteger, nullable=False)
@@ -52,7 +56,7 @@ class MGNREGAData(Base):
     data_fetched_on = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(TIMESTAMP(timezone=True), onupdate=func.now())
 
-class RawAPICache(Base):
+class APICache(Base):
     __tablename__ = 'raw_api_cache'
     id = Column(Integer, primary_key=True, index=True)
     api_url = Column(String, nullable=False)
